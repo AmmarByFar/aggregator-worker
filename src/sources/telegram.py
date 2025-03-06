@@ -24,8 +24,7 @@ class TelegramSource(BaseSource):
         self.client = Telegram(
             api_id=config.telegram_api_id,
             api_hash=config.telegram_api_hash,
-            phone=None,  # We'll use bot token instead
-            bot_token=config.telegram_bot_token,
+            phone=config.telegram_phone,
             database_encryption_key='changeme1234',
         )
         
@@ -67,7 +66,7 @@ class TelegramSource(BaseSource):
         # For now, we'll just return an empty list
         
         # Example of how this would work with the Telegram API:
-        """
+
         result = self.client.get_chat_history(
             chat_id=channel,
             limit=100,
@@ -93,8 +92,7 @@ class TelegramSource(BaseSource):
                     
                     # Update last processed ID
                     if not last_id or int(msg['id']) > int(last_id):
-                        self.set_last_processed_id(channel, str(msg['id']))
-        """
+                        self.set_last_processed_id(channel, str(msg['id']))     
         
         logger.info(f"Collected {len(messages)} messages from Telegram channel {channel}")
         return messages

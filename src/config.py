@@ -19,6 +19,7 @@ class Config(BaseModel):
     telegram_api_id: Optional[str] = Field(default_factory=lambda: os.getenv("TELEGRAM_API_ID", ""))
     telegram_api_hash: Optional[str] = Field(default_factory=lambda: os.getenv("TELEGRAM_API_HASH", ""))
     telegram_bot_token: Optional[str] = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
+    telegram_phone: Optional[str] = Field(default_factory=lambda: os.getenv("TELEGRAM_PHONE", ""))
     telegram_channels: List[str] = Field(default_factory=lambda: os.getenv("TELEGRAM_CHANNELS", "").split(",") if os.getenv("TELEGRAM_CHANNELS") else [])
     
     # Twitter/X configuration
