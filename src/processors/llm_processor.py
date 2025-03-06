@@ -55,7 +55,7 @@ class LLMProcessor:
         
         Your task:
         1. Determine if this message contains valid news information.
-        2. If it does, extract a title, the main content, and identify the country and city it refers to (if applicable).
+        2. If it does, generate a very breif title or extract a title if already available. Extract the main content and identify the country and city it refers to (if applicable).
         3. Assign relevant categories to the news (e.g., politics, technology, sports, etc.).
         4. Provide a confidence score between 0.0 and 1.0 indicating how confident you are that this is valid news.
         
