@@ -1,0 +1,17 @@
+# Core dependencies
+python-dotenv
+langchain
+langchain-openai
+langchain-core
+langchain-community
+supabase
+
+# Data source clients
+python-telegram-bot
+tweepy
+facebook-sdk
+requests
+
+# Utilities
+pydantic
+loguru
