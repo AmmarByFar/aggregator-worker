@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from loguru import logger
 from supabase import create_client, Client
 
@@ -18,11 +18,12 @@ class SupabaseClient:
         # Initialize Supabase client
         self.client: Client = create_client(
             supabase_url=config.supabase_url,
-            supabase_key=config.supabase_key
+            supabase_key=config.supabase_key,
         )
         
-        # Table name for news items
-        self.table_name = "news_items"
+        # Table names
+        self.news_items_table = "news_items"
+        self.telegram_last_processed_table = "telegram_last_processed"
     
     def store_news_items(self, news_items: List[NewsItem]) -> None:
         """
@@ -49,7 +50,7 @@ class SupabaseClient:
             news_item (NewsItem): News item to store
         """
         # Check if the news item already exists
-        response = self.client.table(self.table_name) \
+        response = self.client.table(self.news_items_table) \
             .select("id") \
             .eq("source", news_item.source) \
             .eq("source_id", news_item.source_id) \
@@ -59,11 +60,18 @@ class SupabaseClient:
             logger.debug(f"News item {news_item.source_id} from {news_item.source} already exists")
             return
         
-        # Convert news item to dict for storage
+        # Convert news item to dict for storage with proper datetime serialization
+        # First convert to JSON string with datetime handling, then parse back to dict
         item_dict = news_item.dict(exclude={"id"})
         
+        # Convert datetime objects to ISO format strings
+        if "timestamp" in item_dict and item_dict["timestamp"]:
+            item_dict["timestamp"] = item_dict["timestamp"].isoformat()
+        if "created_at" in item_dict and item_dict["created_at"]:
+            item_dict["created_at"] = item_dict["created_at"].isoformat()
+        
         # Insert news item
-        response = self.client.table(self.table_name) \
+        response = self.client.table(self.news_items_table) \
             .insert(item_dict) \
             .execute()
         
@@ -84,10 +92,80 @@ class SupabaseClient:
         Returns:
             List[Dict[str, Any]]: List of news items
         """
-        response = self.client.table(self.table_name) \
+        response = self.client.table(self.news_items_table) \
             .select("*") \
             .order("created_at", desc=True) \
             .limit(limit) \
             .execute()
         
         return response.data if response.data else []
+    
+    def get_last_processed_message_id(self, source: str, channel: str) -> Optional[str]:
+        """
+        Get the last processed message ID for a specific source and channel
+        
+        Args:
+            source (str): Source name (e.g., 'telegram')
+            channel (str): Channel identifier
+            
+        Returns:
+            Optional[str]: Last processed message ID or None if not found
+        """
+        try:
+            response = self.client.table(self.telegram_last_processed_table) \
+                .select("message_id") \
+                .eq("source", source) \
+                .eq("channel", channel) \
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                return response.data[0]["message_id"]
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving last processed ID for {source}/{channel}: {e}")
+            return None
+    
+    def store_last_processed_message_id(self, source: str, channel: str, message_id: str) -> bool:
+        """
+        Store the last processed message ID for a specific source and channel
+        
+        Args:
+            source (str): Source name (e.g., 'telegram')
+            channel (str): Channel identifier
+            message_id (str): Last processed message ID
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Check if record exists
+            response = self.client.table(self.telegram_last_processed_table) \
+                .select("id") \
+                .eq("source", source) \
+                .eq("channel", channel) \
+                .execute()
+            
+            data = {
+                "source": source,
+                "channel": channel,
+                "message_id": message_id,
+                "updated_at": "now()"
+            }
+            
+            if response.data and len(response.data) > 0:
+                # Update existing record
+                record_id = response.data[0]["id"]
+                response = self.client.table(self.telegram_last_processed_table) \
+                    .update(data) \
+                    .eq("id", record_id) \
+                    .execute()
+            else:
+                # Insert new record
+                response = self.client.table(self.telegram_last_processed_table) \
+                    .insert(data) \
+                    .execute()
+            
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error storing last processed ID for {source}/{channel}: {e}")
+            return False
