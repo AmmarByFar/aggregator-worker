@@ -48,16 +48,13 @@ class Aggregator:
         
         logger.info(f"Collected {len(raw_messages)} raw messages")
         
-        # Process messages with LLM
-        news_items = self._process_messages(raw_messages)
-        if not news_items:
+        # Process messages with LLM and store them immediately
+        processed_count = self._process_and_store_messages(raw_messages)
+        
+        if processed_count > 0:
+            logger.info(f"Processed and stored {processed_count} valid news items")
+        else:
             logger.info("No valid news items found")
-            return
-        
-        logger.info(f"Processed {len(news_items)} valid news items")
-        
-        # Store news items
-        self._store_news_items(news_items)
     
     def _collect_messages(self) -> List[RawMessage]:
         """Collect messages from all enabled sources"""
@@ -74,24 +71,26 @@ class Aggregator:
         
         return all_messages
     
-    def _process_messages(self, raw_messages: List[RawMessage]) -> List[NewsItem]:
-        """Process raw messages with LLM to extract news items"""
-        news_items = []
+    def _process_and_store_messages(self, raw_messages: List[RawMessage]) -> int:
+        """
+        Process raw messages with LLM to extract news items and store each one immediately
+        
+        Returns:
+            int: Number of successfully processed and stored news items
+        """
+        processed_count = 0
         
         for message in raw_messages:
             try:
                 result = self.llm_processor.process_message(message)
                 if result:
-                    news_items.append(result)
+                    # Store the news item immediately after processing
+                    try:
+                        self.storage._store_news_item(result)
+                        processed_count += 1
+                    except Exception as e:
+                        logger.error(f"Error storing news item from {message.source_id}: {e}")
             except Exception as e:
                 logger.error(f"Error processing message {message.source_id} from {message.source}: {e}")
         
-        return news_items
-    
-    def _store_news_items(self, news_items: List[NewsItem]) -> None:
-        """Store processed news items in Supabase"""
-        try:
-            self.storage.store_news_items(news_items)
-            logger.info(f"Successfully stored {len(news_items)} news items")
-        except Exception as e:
-            logger.error(f"Error storing news items: {e}")
+        return processed_count
