@@ -26,6 +26,7 @@ class TelegramSource(BaseSource):
             api_hash=config.telegram_api_hash,
             phone=config.telegram_phone,
             database_encryption_key='changeme1234',
+            files_directory='/tmp/.tdlib_files/'
         )
         
         # Start the client
@@ -61,11 +62,15 @@ class TelegramSource(BaseSource):
         
         # Get the last processed message ID for this channel
         last_id = self.get_last_processed_id(channel)
-        
-        # In a real implementation, we would use the Telegram API to get messages
-        # For now, we'll just return an empty list
-        
-        # Example of how this would work with the Telegram API:
+
+
+        params = {
+            'chat_list_': None,  # or {} for main chat list
+            'limit_': 100
+        }
+        method_call = self.client.call_method('loadChats', params)
+        logger.info(f"method_call: {method_call.ok_received}")
+
 
         result = self.client.get_chat_history(
             chat_id=channel,
@@ -97,6 +102,8 @@ class TelegramSource(BaseSource):
         logger.info(f"Collected {len(messages)} messages from Telegram channel {channel}")
         return messages
     
+    
+        
     def get_last_processed_id(self, channel: str = None) -> str:
         """Get the ID of the last processed message for a channel"""
         if channel is None:

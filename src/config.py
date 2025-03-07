@@ -6,7 +6,7 @@ class Config(BaseModel):
     # Worker configuration
     worker_id: str = Field(default_factory=lambda: os.getenv("WORKER_ID", "worker1"))
     worker_sources: List[str] = Field(default_factory=lambda: os.getenv("WORKER_SOURCES", "telegram,twitter,facebook").split(","))
-    polling_interval: int = Field(default_factory=lambda: int(os.getenv("POLLING_INTERVAL", "300")))
+    polling_interval: int = Field(default_factory=lambda: int(os.getenv("POLLING_INTERVAL", "300").split("#")[0].strip()))
     
     # OpenAI configuration
     openai_api_key: str = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))

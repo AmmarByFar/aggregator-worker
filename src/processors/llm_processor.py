@@ -6,7 +6,7 @@ from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.output_parsers import PydanticOutputParser
 from langchain.chains import LLMChain
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from src.config import Config
 from src.models import RawMessage, NewsItem
@@ -21,7 +21,7 @@ class NewsExtraction(BaseModel):
     categories: list[str] = Field(default_factory=list, description="Categories the news belongs to")
     confidence_score: float = Field(description="Confidence score between 0.0 and 1.0")
 
-    @validator('confidence_score')
+    @field_validator('confidence_score')
     def check_confidence_score(cls, v):
         if not 0.0 <= v <= 1.0:
             raise ValueError("Confidence score must be between 0.0 and 1.0")

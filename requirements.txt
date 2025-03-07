@@ -9,7 +9,7 @@ supabase
 # Data source clients
 python-telegram
 tweepy
-facebook-sdkpip
+facebook-sdk
 requests
 
 # Utilities
