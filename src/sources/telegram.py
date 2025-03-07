@@ -36,24 +36,32 @@ class TelegramSource(BaseSource):
         # Initialize Supabase client for persistence
         self.storage = SupabaseClient(config)
         
-        # Store last processed message IDs for each channel
-        self.last_processed_ids: Dict[str, str] = {}
-        self._load_last_processed_ids()
+        # Store last processed timestamps for each channel
+        self.last_processed_timestamps: Dict[str, int] = {}
+        self._load_last_processed_timestamps()
     
-    def _load_last_processed_ids(self) -> None:
-        """Load last processed message IDs from Supabase storage"""
+    def _load_last_processed_timestamps(self) -> None:
+        """Load last processed message timestamps from Supabase storage"""
         for channel in self.config.telegram_channels:
             try:
-                # Try to load from Supabase
-                message_id = self.storage.get_last_processed_message_id("telegram", channel)
-                self.last_processed_ids[channel] = message_id if message_id else ""
-                if message_id:
-                    logger.info(f"Loaded last processed message ID for channel {channel}: {message_id}")
+                # Try to load timestamp from Supabase
+                timestamp = self.storage.get_last_processed_timestamp("telegram", channel)
+                if timestamp is not None:
+                    self.last_processed_timestamps[channel] = timestamp
+                    logger.info(f"Loaded last processed timestamp for channel {channel}: {timestamp} ({datetime.fromtimestamp(timestamp)})")
                 else:
-                    logger.info(f"No last processed message ID found for channel {channel}")
+                    # Fall back to message_id for backward compatibility
+                    message_id = self.storage.get_last_processed_message_id("telegram", channel)
+                    if message_id:
+                        logger.info(f"No timestamp found, using message ID for channel {channel}: {message_id}")
+                        # We don't have a timestamp, so we'll set it to 0 and rely on message_id for this run
+                        self.last_processed_timestamps[channel] = 0
+                    else:
+                        logger.info(f"No last processed data found for channel {channel}")
+                        self.last_processed_timestamps[channel] = 0
             except Exception as e:
-                logger.error(f"Error loading last processed ID for channel {channel}: {e}")
-                self.last_processed_ids[channel] = ""
+                logger.error(f"Error loading last processed data for channel {channel}: {e}")
+                self.last_processed_timestamps[channel] = 0
     
     def collect_messages(self) -> List[RawMessage]:
         """Collect messages from configured Telegram channels"""
@@ -72,24 +80,24 @@ class TelegramSource(BaseSource):
         """Collect messages from a specific Telegram channel"""
         messages: List[RawMessage] = []
         receive = True
-        receive_limit = 2  # You can adjust this limit
+        receive_limit = 10  # You can adjust this limit
         stats_data = {}
         
-        # Get the last processed message ID for this channel
-        from_message_id = self.get_last_processed_id(channel)
-        if not from_message_id:
-            from_message_id = 0
-        else:
-            from_message_id = int(from_message_id)
+        # Get the last processed timestamp for this channel
+        last_timestamp = self.get_last_processed_timestamp(channel)
         
-        # Track the last message ID we've seen in this batch
-        last_seen_message_id = from_message_id
+        # We still need a message_id to start fetching from
+        # For now, we'll use 0 to get the most recent messages
+        from_message_id = 0
+        
+        # Track the highest timestamp we've seen in this batch
+        highest_timestamp_seen = last_timestamp
 
         while receive:
             try:
                 response = self.client.get_chat_history(
                     chat_id=channel,
-                    limit=2,  # Fetch in smaller batches
+                    limit=10,  # Fetch in smaller batches
                     from_message_id=from_message_id
                 )
                 response.wait()
@@ -102,6 +110,12 @@ class TelegramSource(BaseSource):
                 new_messages_found = False
                 
                 for message in response.update["messages"]:
+                    # Skip messages that are older than our last processed timestamp
+                    message_timestamp = message.get("date", 0)
+                    if message_timestamp <= last_timestamp:
+                        logger.debug(f"Skipping message {message['id']} with timestamp {message_timestamp} (older than {last_timestamp})")
+                        continue
+                    
                     if message["content"]["@type"] == "messageText":
                         # Only process if this is a new message
                         if message["id"] not in stats_data:
@@ -110,9 +124,10 @@ class TelegramSource(BaseSource):
                             # Store message text in stats_data
                             stats_data[message["id"]] = message["content"]["text"]["text"]
                             
-                            # Track the last message ID we've seen
-                            if message["id"] > last_seen_message_id:
-                                last_seen_message_id = message["id"]
+                            # Track the highest timestamp we've seen
+                            if message_timestamp > highest_timestamp_seen:
+                                highest_timestamp_seen = message_timestamp
+                                logger.debug(f"New highest timestamp: {highest_timestamp_seen} ({datetime.fromtimestamp(highest_timestamp_seen)})")
 
                             # Create RawMessage object
                             raw_msg = RawMessage(
@@ -124,21 +139,24 @@ class TelegramSource(BaseSource):
                                 metadata={
                                     'channel': channel,
                                     'message_id': message["id"],
+                                    'timestamp': message_timestamp,
                                     'reply_to_message_id': message.get('reply_to_message_id', None),
                                 }
                             )
                             messages.append(raw_msg)
 
-                            # Update last processed ID
-                            self.set_last_processed_id(channel, str(message["id"]))
+                            # Update last processed timestamp
+                            self.set_last_processed_timestamp(channel, message_timestamp)
                 
                 # If we didn't find any new messages, break the loop
                 if not new_messages_found:
                     logger.info(f"No new messages found in batch from {channel}")
                     break
                 
-                # Update from_message_id to fetch the next batch of messages
-                from_message_id = last_seen_message_id
+                # Get the last message ID to use as the starting point for the next batch
+                if messages:
+                    last_message = messages[-1]
+                    from_message_id = int(last_message.metadata['message_id'])
                 
                 total_messages = len(stats_data)
                 logger.info(f"[{total_messages}/{receive_limit}] messages received from {channel}")
@@ -157,30 +175,57 @@ class TelegramSource(BaseSource):
     
     
         
-    def get_last_processed_id(self, channel: str = None) -> str:
-        """Get the ID of the last processed message for a channel"""
+    def get_last_processed_timestamp(self, channel: str = None) -> int:
+        """Get the timestamp of the last processed message for a channel"""
         if channel is None:
-            # If no channel is specified, return the oldest ID
-            if not self.last_processed_ids:
-                return ""
-            return min(self.last_processed_ids.values())
+            # If no channel is specified, return the oldest timestamp
+            if not self.last_processed_timestamps:
+                return 0
+            return min(self.last_processed_timestamps.values())
         
-        return self.last_processed_ids.get(channel, "")
+        return self.last_processed_timestamps.get(channel, 0)
     
-    def set_last_processed_id(self, channel: str, message_id: str) -> None:
-        """Set the ID of the last processed message for a channel and persist to Supabase"""
+    def set_last_processed_timestamp(self, channel: str, timestamp: int) -> None:
+        """Set the timestamp of the last processed message for a channel and persist to Supabase"""
+        # Only update if this timestamp is newer than what we have
+        current_timestamp = self.last_processed_timestamps.get(channel, 0)
+        if timestamp <= current_timestamp:
+            logger.debug(f"Not updating timestamp for channel {channel} as {timestamp} is not newer than {current_timestamp}")
+            return
+            
         # Update in-memory cache
-        self.last_processed_ids[channel] = message_id
+        self.last_processed_timestamps[channel] = timestamp
         
         # Persist to Supabase
         try:
-            success = self.storage.store_last_processed_message_id("telegram", channel, message_id)
+            success = self.storage.store_last_processed_timestamp("telegram", channel, timestamp)
             if success:
-                logger.debug(f"Persisted last processed message ID for channel {channel}: {message_id}")
+                logger.debug(f"Persisted last processed timestamp for channel {channel}: {timestamp} ({datetime.fromtimestamp(timestamp)})")
             else:
-                logger.warning(f"Failed to persist last processed message ID for channel {channel}")
+                logger.warning(f"Failed to persist last processed timestamp for channel {channel}")
         except Exception as e:
-            logger.error(f"Error persisting last processed ID for channel {channel}: {e}")
+            logger.error(f"Error persisting last processed timestamp for channel {channel}: {e}")
+    
+    # Implement the abstract methods from BaseSource
+    def get_last_processed_id(self, channel: str = None) -> str:
+        """
+        Get the ID of the last processed message (for backward compatibility)
+        
+        This method is maintained for compatibility with the BaseSource interface,
+        but we're now using timestamps instead of message IDs.
+        """
+        # We don't have message IDs anymore, so return empty string
+        return ""
+    
+    def set_last_processed_id(self, channel: str, message_id: str) -> None:
+        """
+        Set the ID of the last processed message (for backward compatibility)
+        
+        This method is maintained for compatibility with the BaseSource interface,
+        but we're now using timestamps instead of message IDs.
+        """
+        # We're not using message IDs anymore, so this is a no-op
+        logger.debug(f"set_last_processed_id called with {channel}, {message_id} - using timestamps instead")
     
     def __del__(self):
         """Clean up resources"""

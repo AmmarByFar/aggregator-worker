@@ -14,8 +14,8 @@ from src.models import RawMessage, NewsItem
 class NewsExtraction(BaseModel):
     """Schema for LLM output parsing"""
     is_valid_news: bool = Field(description="Whether the message contains valid news")
-    title: Optional[str] = Field(None, description="Title of the news article")
-    content: Optional[str] = Field(None, description="Main content of the news")
+    title: Optional[str] = Field(None, description="Title of the news message, post or article")
+    content: Optional[str] = Field(None, description="Main content of the message")
     country: Optional[str] = Field(None, description="Country the news is about")
     city: Optional[str] = Field(None, description="City the news is about")
     categories: list[str] = Field(default_factory=list, description="Categories the news belongs to")

@@ -125,6 +125,31 @@ class SupabaseClient:
             logger.error(f"Error retrieving last processed ID for {source}/{channel}: {e}")
             return None
     
+    def get_last_processed_timestamp(self, source: str, channel: str) -> Optional[int]:
+        """
+        Get the last processed message timestamp for a specific source and channel
+        
+        Args:
+            source (str): Source name (e.g., 'telegram')
+            channel (str): Channel identifier
+            
+        Returns:
+            Optional[int]: Last processed timestamp (Unix time) or None if not found
+        """
+        try:
+            response = self.client.table(self.telegram_last_processed_table) \
+                .select("timestamp") \
+                .eq("source", source) \
+                .eq("channel", channel) \
+                .execute()
+            
+            if response.data and len(response.data) > 0 and response.data[0].get("timestamp") is not None:
+                return response.data[0]["timestamp"]
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving last processed timestamp for {source}/{channel}: {e}")
+            return None
+    
     def store_last_processed_message_id(self, source: str, channel: str, message_id: str) -> bool:
         """
         Store the last processed message ID for a specific source and channel
@@ -168,4 +193,49 @@ class SupabaseClient:
             return bool(response.data)
         except Exception as e:
             logger.error(f"Error storing last processed ID for {source}/{channel}: {e}")
+            return False
+    
+    def store_last_processed_timestamp(self, source: str, channel: str, timestamp: int) -> bool:
+        """
+        Store the last processed message timestamp for a specific source and channel
+        
+        Args:
+            source (str): Source name (e.g., 'telegram')
+            channel (str): Channel identifier
+            timestamp (int): Last processed message timestamp (Unix time)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Check if record exists
+            response = self.client.table(self.telegram_last_processed_table) \
+                .select("id") \
+                .eq("source", source) \
+                .eq("channel", channel) \
+                .execute()
+            
+            data = {
+                "source": source,
+                "channel": channel,
+                "timestamp": timestamp,
+                "updated_at": "now()"
+            }
+            
+            if response.data and len(response.data) > 0:
+                # Update existing record
+                record_id = response.data[0]["id"]
+                response = self.client.table(self.telegram_last_processed_table) \
+                    .update(data) \
+                    .eq("id", record_id) \
+                    .execute()
+            else:
+                # Insert new record
+                response = self.client.table(self.telegram_last_processed_table) \
+                    .insert(data) \
+                    .execute()
+            
+            return bool(response.data)
+        except Exception as e:
+            logger.error(f"Error storing last processed timestamp for {source}/{channel}: {e}")
             return False
