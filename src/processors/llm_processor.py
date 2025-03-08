@@ -101,11 +101,17 @@ class LLMProcessor:
                 return None
             
             # Create news item
+            # Get source URL from metadata if available
+            source_url = None
+            if message.source == "twitter" and "tweet_url" in message.metadata:
+                source_url = message.metadata["tweet_url"]
+            
             news_item = NewsItem(
                 title=extraction.title or "Untitled",
                 content=extraction.content or message.content,
                 source=message.source,
                 source_id=message.source_id,
+                source_url=source_url,
                 author=message.author,
                 country=extraction.country,
                 city=extraction.city,
