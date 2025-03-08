@@ -80,7 +80,7 @@ class TelegramSource(BaseSource):
         """Collect messages from a specific Telegram channel"""
         messages: List[RawMessage] = []
         receive = True
-        receive_limit = 10  # You can adjust this limit
+        receive_limit = 60  # You can adjust this limit
         stats_data = {}
         
         # Get the last processed timestamp for this channel
@@ -128,6 +128,9 @@ class TelegramSource(BaseSource):
                             if message_timestamp > highest_timestamp_seen:
                                 highest_timestamp_seen = message_timestamp
                                 logger.debug(f"New highest timestamp: {highest_timestamp_seen} ({datetime.fromtimestamp(highest_timestamp_seen)})")
+                            
+                            message_link = self.client.call_method('getMessageLink', params={'chat_id': channel, 'message_id': message["id"]})
+                            message_link.wait()
 
                             # Create RawMessage object
                             raw_msg = RawMessage(
@@ -141,6 +144,7 @@ class TelegramSource(BaseSource):
                                     'message_id': message["id"],
                                     'timestamp': message_timestamp,
                                     'reply_to_message_id': message.get('reply_to_message_id', None),
+                                    'source_url': message_link.update['link']
                                 }
                             )
                             messages.append(raw_msg)

@@ -19,13 +19,13 @@ class NewsExtraction(BaseModel):
     country: Optional[str] = Field(None, description="Country the news is about")
     city: Optional[str] = Field(None, description="City the news is about")
     categories: list[str] = Field(default_factory=list, description="Categories the news belongs to")
-    confidence_score: float = Field(description="Confidence score between 0.0 and 1.0")
+    # confidence_score: float = Field(description="Confidence score between 0.0 and 1.0")
 
-    @field_validator('confidence_score')
-    def check_confidence_score(cls, v):
-        if not 0.0 <= v <= 1.0:
-            raise ValueError("Confidence score must be between 0.0 and 1.0")
-        return v
+    # @field_validator('confidence_score')
+    # def check_confidence_score(cls, v):
+    #     if not 0.0 <= v <= 1.0:
+    #         raise ValueError("Confidence score must be between 0.0 and 1.0")
+    #     return v
 
 class LLMProcessor:
     """Processes raw messages using LLM to extract news information"""
@@ -57,7 +57,6 @@ class LLMProcessor:
         1. Determine if this message contains valid news information.
         2. If it does, generate a very breif title or extract a title if already available. Extract the main content and identify the country and city it refers to (if applicable).
         3. Assign relevant categories to the news (e.g., politics, technology, sports, etc.).
-        4. Provide a confidence score between 0.0 and 1.0 indicating how confident you are that this is valid news.
         
         {format_instructions}
         """
@@ -102,9 +101,7 @@ class LLMProcessor:
             
             # Create news item
             # Get source URL from metadata if available
-            source_url = None
-            if message.source == "twitter" and "tweet_url" in message.metadata:
-                source_url = message.metadata["tweet_url"]
+            source_url = message.metadata.get("source_url", "")
             
             news_item = NewsItem(
                 title=extraction.title or "Untitled",
