@@ -35,7 +35,7 @@ class LLMProcessor:
         
         # Initialize LLM
         self.llm = ChatOpenAI(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             temperature=0,
             openai_api_key=config.openai_api_key
         )

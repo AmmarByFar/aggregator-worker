@@ -20,7 +20,7 @@ class NewsItem(BaseModel):
     source_id: str  # Unique ID from the source
     source_url: Optional[str] = None
     author: Optional[str] = None
-    country: Optional[str] = None
+    country: Optional[str] = 'Other'
     city: Optional[str] = None
     timestamp: datetime
     created_at: Optional[datetime] = None
