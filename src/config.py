@@ -10,6 +10,8 @@ class Config(BaseModel):
     
     # OpenAI configuration
     openai_api_key: str = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    embedding_model: str = Field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002"))
+    similarity_threshold: float = Field(default_factory=lambda: float(os.getenv("SIMILARITY_THRESHOLD", "0.8")))
     
     # Supabase configuration
     supabase_url: str = Field(default_factory=lambda: os.getenv("SUPABASE_URL", ""))

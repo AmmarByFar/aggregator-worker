@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from loguru import logger
 
@@ -6,10 +6,11 @@ from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.output_parsers import PydanticOutputParser
 from langchain.chains import LLMChain
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from src.config import Config
 from src.models import RawMessage, NewsItem
+from src.storage.supabase_client import SupabaseClient
 
 class NewsExtraction(BaseModel):
     """Schema for LLM output parsing"""
@@ -19,6 +20,7 @@ class NewsExtraction(BaseModel):
     country: Optional[str] = Field(None, description="Country the news is about")
     city: Optional[str] = Field(None, description="City the news is about")
     categories: list[str] = Field(default_factory=list, description="Categories the news belongs to")
+    person_names: list[str] = Field(default_factory=list, description="Names of individuals mentioned in the news content")
     # confidence_score: float = Field(description="Confidence score between 0.0 and 1.0")
 
     # @field_validator('confidence_score')
@@ -40,6 +42,9 @@ class LLMProcessor:
             openai_api_key=config.openai_api_key
         )
         
+        # Initialize Supabase client for similarity search
+        self.supabase = SupabaseClient(config)
+        
         # Initialize output parser
         self.parser = PydanticOutputParser(pydantic_object=NewsExtraction)
         
@@ -57,6 +62,7 @@ class LLMProcessor:
         1. Determine if this message contains valid news information.
         2. If it does, generate a very breif title or extract a title if already available. Extract the main content and identify the country and city it refers to (if applicable).
         3. Assign relevant categories to the news (e.g., politics, technology, sports, etc.).
+        4. Extract the names of the individuals mentioned in the main content.
         
         {format_instructions}
         """
@@ -70,7 +76,7 @@ class LLMProcessor:
         # Create chain
         self.chain = LLMChain(llm=self.llm, prompt=self.prompt)
     
-    def process_message(self, message: RawMessage) -> Optional[NewsItem]:
+    async def process_message(self, message: RawMessage) -> Optional[NewsItem]:
         """
         Process a raw message to extract news information
         
@@ -99,6 +105,11 @@ class LLMProcessor:
                 logger.debug(f"Message {message.source_id} from {message.source} is not valid news")
                 return None
             
+            # Get embedding and similarity score
+            embedding, similarity_score = await self.supabase.get_embedding_and_similarity(message)
+
+            # logger.info(f"Generated similarity_score: {similarity_score} and embedding: {embedding}")
+            
             # Create news item
             # Get source URL from metadata if available
             source_url = message.metadata.get("source_url", "")
@@ -115,9 +126,11 @@ class LLMProcessor:
                 timestamp=message.timestamp,
                 created_at=datetime.now(),
                 is_valid_news=extraction.is_valid_news,
-                confidence_score=extraction.confidence_score,
+                similarity_score=similarity_score,
+                embedding=embedding,
                 categories=extraction.categories,
-                metadata=message.metadata
+                metadata=message.metadata,
+                person_names=extraction.person_names
             )
             
             logger.info(f"Extracted news item: {news_item.title} from {message.source}")

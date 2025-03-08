@@ -25,6 +25,7 @@ class NewsItem(BaseModel):
     timestamp: datetime
     created_at: Optional[datetime] = None
     is_valid_news: bool = True
-    confidence_score: float  # 0.0 to 1.0
+    similarity_score: int = Field(default=0)  # 0 to 10, based on content similarity
+    embedding: Optional[List[float]] = None  # Vector embedding of content
     categories: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)

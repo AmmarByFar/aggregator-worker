@@ -1,12 +1,13 @@
 import os
 import time
+import asyncio
 from dotenv import load_dotenv
 from loguru import logger
 
 from src.config import Config
 from src.aggregator import Aggregator
 
-def main():
+async def main():
     # Load environment variables
     load_dotenv()
     
@@ -21,9 +22,9 @@ def main():
     try:
         while True:
             logger.info("Starting aggregation cycle")
-            aggregator.run()
+            await aggregator.run()
             logger.info(f"Sleeping for {config.polling_interval} seconds")
-            time.sleep(config.polling_interval)
+            await asyncio.sleep(config.polling_interval)
     except KeyboardInterrupt:
         logger.info("Shutting down worker")
     except Exception as e:
@@ -31,4 +32,4 @@ def main():
         raise
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -38,7 +38,7 @@ class Aggregator:
             else:
                 logger.warning(f"Unknown source: {source_name}")
     
-    def run(self):
+    async def run(self):
         """Run a complete aggregation cycle"""
         # Collect raw messages from all sources
         raw_messages = self._collect_messages()
@@ -49,7 +49,7 @@ class Aggregator:
         logger.info(f"Collected {len(raw_messages)} raw messages")
         
         # Process messages with LLM and store them immediately
-        processed_count = self._process_and_store_messages(raw_messages)
+        processed_count = await self._process_and_store_messages(raw_messages)
         
         if processed_count > 0:
             logger.info(f"Processed and stored {processed_count} valid news items")
@@ -71,7 +71,7 @@ class Aggregator:
         
         return all_messages
     
-    def _process_and_store_messages(self, raw_messages: List[RawMessage]) -> int:
+    async def _process_and_store_messages(self, raw_messages: List[RawMessage]) -> int:
         """
         Process raw messages with LLM to extract news items and store each one immediately
         
@@ -82,7 +82,7 @@ class Aggregator:
         
         for message in raw_messages:
             try:
-                result = self.llm_processor.process_message(message)
+                result = await self.llm_processor.process_message(message)
                 if result:
                     # Store the news item immediately after processing
                     try:

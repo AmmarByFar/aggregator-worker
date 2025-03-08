@@ -1,9 +1,11 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
+import numpy as np
 from supabase import create_client, Client
+from langchain_openai import OpenAIEmbeddings
 
 from src.config import Config
-from src.models import NewsItem
+from src.models import NewsItem, RawMessage
 
 class SupabaseClient:
     """Client for storing news items in Supabase"""
@@ -21,10 +23,17 @@ class SupabaseClient:
             supabase_key=config.supabase_key,
         )
         
+        # Initialize embeddings
+        self.embeddings = OpenAIEmbeddings(
+            model=config.embedding_model,
+            openai_api_key=config.openai_api_key
+        )
+        
         # Table names
         self.news_items_table = "news_items"
+        self.news_embeddings_table = "news_embeddings"
         self.telegram_last_processed_table = "telegram_last_processed"
-    
+
     def store_news_items(self, news_items: List[NewsItem]) -> None:
         """
         Store news items in Supabase
@@ -239,3 +248,46 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Error storing last processed timestamp for {source}/{channel}: {e}")
             return False
+    
+    async def get_embedding_and_similarity(self, message: RawMessage) -> Tuple[List[float], int]:
+        """
+        Get embedding for a message and compute similarity with existing content
+        Similarity is a number between 0-10 corresponding to the number of matched documents
+        
+        Returns:
+            Tuple[List[float], int]: (embedding, similarity_score)
+        """
+        try:
+            # Generate embedding for the new message
+            text_to_embed = f"{message.content}"
+            if message.metadata.get("title"):
+                text_to_embed = f"{message.metadata['title']} {text_to_embed}"
+                
+            embedding = await self.embeddings.aembed_query(text_to_embed)
+            
+            # Convert embedding to list to make it JSON serializable
+            embedding_list = embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
+            
+            # Find most similar existing content
+            # Note: This requires the pgvector extension and appropriate index
+            response = self.client.rpc(
+                'match_news_embeddings',
+                {
+                    'query_embedding': embedding_list,
+                    'match_threshold': self.config.similarity_threshold,
+                    'match_count': 10
+                }
+            ).execute()
+            
+            if response.data:
+                # similarity = response.data[0].get('similarity', 0.0)
+                similarity = len(response.data)
+            else:
+                similarity = 0
+                
+            return embedding_list, int(similarity)
+            
+        except Exception as e:
+            logger.error(f"Error computing similarity: {e}")
+            # Return empty embedding list and 0 similarity on error
+            return [], 0
